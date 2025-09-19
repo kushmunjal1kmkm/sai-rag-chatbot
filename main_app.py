@@ -1,4 +1,5 @@
 from flask import Flask, request, jsonify
+from flask_cors import CORS
 import os
 import sys
 from dotenv import load_dotenv
@@ -10,6 +11,7 @@ load_dotenv("./config/.env")
 sys.path.append(os.path.dirname(__file__))
 
 app = Flask(__name__)
+CORS(app, origins=['*'])  # Allow all origins for now, restrict in production
 
 rag_system = None
 

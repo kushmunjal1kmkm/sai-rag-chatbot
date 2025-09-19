@@ -1,0 +1,126 @@
+name: Deploy SAI RAG Chatbot
+
+on:
+  # Trigger on push to main branch
+  push:
+    branches: [ main ]
+  
+  # Allow manual trigger
+  workflow_dispatch:
+    inputs:
+      run_duration:
+        description: 'How long to run the server (in minutes, max 360)'
+        required: false
+        default: '60'
+
+jobs:
+  deploy-chatbot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360  # 6 hours maximum
+    
+    steps:
+    - name: 🚀 Checkout Repository
+      uses: actions/checkout@v4
+      
+    - name: 🐍 Set up Python 3.11
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+        cache: 'pip'
+        
+    - name: 📦 Install Dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install flask-cors  # Add CORS support
+        
+    - name: 🔧 Create Environment File
+      run: |
+        mkdir -p config
+        cat > config/.env << EOF
+        GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}
+        DEBUG=False
+        FLASK_PORT=5000
+        HOST=0.0.0.0
+        EOF
+        
+    - name: 📁 Verify Project Structure
+      run: |
+        echo "📂 Project Structure:"
+        find . -type f -name "*.py" | head -10
+        echo "📄 Config files:"
+        ls -la config/
+        echo "📊 Source files:"
+        ls -la src/
+        
+    - name: 🔍 Test Application Startup
+      run: |
+        echo "🧪 Testing application startup..."
+        timeout 30s python main_app.py &
+        sleep 5
+        if curl -f http://localhost:5000/health; then
+          echo "✅ Application started successfully"
+        else
+          echo "❌ Application failed to start"
+          exit 1
+        fi
+        pkill -f python || true
+        
+    - name: 🌐 Start SAI RAG Chatbot Server
+      run: |
+        echo "🚀 Starting SAI RAG Chatbot Server..."
+        echo "⏰ Server will run for ${{ github.event.inputs.run_duration || '60' }} minutes"
+        echo "🔗 Access URLs will be available in ngrok step"
+        
+        # Install ngrok for public URL
+        curl -s https://ngrok-agent.s3.amazonaws.com/ngrok.asc | sudo tee /etc/apt/trusted.gpg.d/ngrok.asc >/dev/null
+        echo "deb https://ngrok-agent.s3.amazonaws.com buster main" | sudo tee /etc/apt/sources.list.d/ngrok.list
+        sudo apt update && sudo apt install ngrok
+        
+        # Start ngrok in background
+        ngrok authtoken ${{ secrets.NGROK_AUTH_TOKEN }}
+        ngrok http 5000 --log=stdout > ngrok.log &
+        sleep 5
+        
+        # Get public URL
+        PUBLIC_URL=$(curl -s localhost:4040/api/tunnels | jq -r '.tunnels[0].public_url')
+        echo "🌍 Public URL: $PUBLIC_URL"
+        echo "PUBLIC_URL=$PUBLIC_URL" >> $GITHUB_ENV
+        
+        # Start Flask app
+        python main_app.py &
+        FLASK_PID=$!
+        
+        echo "✅ Server started with PID: $FLASK_PID"
+        echo "⏰ Running for ${{ github.event.inputs.run_duration || '60' }} minutes..."
+        
+        # Keep server running
+        sleep $(( ${{ github.event.inputs.run_duration || '60' }} * 60 ))
+        
+        echo "⏰ Time limit reached. Stopping server..."
+        kill $FLASK_PID || true
+        
+    - name: 📊 Display Server Information
+      if: always()
+      run: |
+        echo "🔗 SAI RAG Chatbot was accessible at: $PUBLIC_URL"
+        echo "📊 Server ran for: ${{ github.event.inputs.run_duration || '60' }} minutes"
+        echo "📈 Check logs above for any errors or usage statistics"
+        
+        # Display ngrok logs
+        echo "📋 Ngrok access logs:"
+        if [ -f ngrok.log ]; then
+          tail -20 ngrok.log
+        fi
+
+  # Optional: Send notification when server starts
+  notify:
+    needs: deploy-chatbot
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+    - name: 📧 Send Notification
+      run: |
+        echo "🔔 SAI RAG Chatbot deployment completed"
+        echo "✅ Status: ${{ needs.deploy-chatbot.result }}"
+        # Add webhook notification here if needed
