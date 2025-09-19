@@ -8,7 +8,7 @@ build:
     - echo "Build completed successfully"
 
 run:
-  command: python main_app.py
+  command: python main.py
 
 env:
   - key: PYTHON_VERSION

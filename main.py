@@ -6,83 +6,45 @@ from dotenv import load_dotenv
 import json
 import asyncio
 
+# Load environment variables
 load_dotenv("./config/.env")
 
+# Add current directory to Python path
 sys.path.append(os.path.dirname(__file__))
 
+# Initialize Flask app
 app = Flask(__name__)
-CORS(app, origins=['*'])  # Allow all origins for now, restrict in production
+CORS(app, origins=['*'])  # Allow all origins for GitHub Pages integration
+
+# Disable Flask auto-reload to prevent venv file watching issues
+app.config['DEBUG'] = False
+app.config['PROPAGATE_EXCEPTIONS'] = True
 
 rag_system = None
 
 @app.route('/')
 def index():
-    """Simple index page with examples"""
-    return """
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <title>SAI RAG System - Sports Assistant</title>
-        <style>
-            body { font-family: Arial, sans-serif; margin: 40px; line-height: 1.6; }
-            .header { background: #1976d2; color: white; padding: 20px; border-radius: 5px; margin-bottom: 30px; }
-            .example { background: #f5f5f5; padding: 15px; margin: 10px 0; border-radius: 5px; }
-            .example a { color: #1976d2; text-decoration: none; }
-            .example a:hover { text-decoration: underline; }
-            h1, h2 { color: #1976d2; }
-        </style>
-    </head>
-    <body>
-        <div class="header">
-            <h1>🏆 SAI Sports Assistant</h1>
-            <p>Ask questions about Sports Authority of India, TOPS, training programs, and more!</p>
-        </div>
-        
-        <h2>📋 Example Questions (Click to try):</h2>
-        
-        <div class="example">
-            <strong>About SAI:</strong><br>
-            <a href="/ask/What is the Sports Authority of India">What is the Sports Authority of India?</a>
-        </div>
-        
-        <div class="example">
-            <strong>Sports Promotion:</strong><br>
-            <a href="/ask/what are the 4 levels of sports promotion schemes">What are the 4 levels of sports promotion schemes?</a>
-        </div>
-        
-        <div class="example">
-            <strong>TOPS Program:</strong><br>
-            <a href="/ask/What is the TOPS scheme">What is the TOPS scheme?</a>
-        </div>
-        
-        <div class="example">
-            <strong>Training Centers:</strong><br>
-            <a href="/ask/How many SAI training centers are there in India">How many SAI training centers are there in India?</a>
-        </div>
-        
-        <div class="example">
-            <strong>Khelo India:</strong><br>
-            <a href="/ask/Tell me about Khelo India scheme">Tell me about Khelo India scheme?</a>
-        </div>
-        
-        <div class="example">
-            <strong>Facilities:</strong><br>
-            <a href="/ask/What facilities does SAI provide to athletes">What facilities does SAI provide to athletes?</a>
-        </div>
-        
-        <h2>💡 How to Use:</h2>
-        <p>Simply add your question after <code>/ask/</code> in the URL:</p>
-        <p><strong>Format:</strong> <code>http://127.0.0.1:5000/ask/your question here</code></p>
-        
-        <h2>🔗 API Endpoints:</h2>
-        <ul>
-            <li><a href="/health">System Health Check</a></li>
-            <li><a href="/stats">System Statistics</a></li>
-            <li><a href="/pipeline/status">Pipeline Status</a></li>
-        </ul>
-    </body>
-    </html>
-    """
+    """API Status and Documentation"""
+    return jsonify({
+        "name": "SAI Sports Assistant API",
+        "version": "1.0.0",
+        "description": "AI-powered API for Sports Authority of India information",
+        "status": "running",
+        "endpoints": {
+            "POST /chat": "Send chat messages to the AI assistant",
+            "GET /health": "System health check",
+            "GET /stats": "System statistics",
+            "GET /pipeline/status": "Data pipeline status",
+            "POST /pipeline/refresh": "Refresh data pipeline"
+        },
+        "example_usage": {
+            "url": "POST /chat",
+            "body": {
+                "message": "What is the Sports Authority of India?",
+                "conversation_id": "optional_id"
+            }
+        }
+    })
 
 def initialize_rag():
     global rag_system
@@ -101,29 +63,38 @@ def initialize_rag():
             print(f"❌ Failed to initialize RAG system: {e}")
             rag_system = "fallback"
 
-@app.route('/ask', methods=['POST'])
-def ask_question():
+@app.route('/chat', methods=['POST'])
+def chat():
+    """Main chat endpoint for frontend integration"""
     try:
         data = request.get_json()
-        query = data.get('query', '').strip()
         
-        if not query:
-            return jsonify({'error': 'No query provided'}), 400
+        if not data:
+            return jsonify({'error': 'No JSON data provided'}), 400
+            
+        message = data.get('message', '').strip()
+        conversation_id = data.get('conversation_id', '')
         
-        print(f"📝 Query: {query}")
+        if not message:
+            return jsonify({'error': 'No message provided'}), 400
         
+        print(f"📝 Query: {message}")
+        
+        # Initialize RAG system if needed
         if rag_system is None:
             initialize_rag()
         
         if rag_system != "fallback":
             try:
-                result = rag_system.query(query)
+                result = rag_system.query(message)
                 
                 response_data = {
-                    'query': query,
+                    'success': True,
+                    'message': message,
                     'response': result['answer'],
                     'sources_used': result['num_sources'],
                     'sources': result['sources'],
+                    'conversation_id': conversation_id,
                     'system': 'enhanced_rag_pipeline',
                     'model': 'gemini-1.5-flash',
                     'vector_store': 'chromadb'
@@ -134,97 +105,40 @@ def ask_question():
             except Exception as e:
                 print(f"❌ Enhanced RAG error: {e}")
                 return jsonify({
+                    'success': False,
                     'error': 'RAG system error',
                     'message': str(e)
                 }), 500
         else:
             return jsonify({
+                'success': False,
                 'error': 'RAG system not available',
                 'message': 'Please check system configuration'
             }), 503
         
     except Exception as e:
         print(f"❌ Error processing request: {e}")
-        return jsonify({'error': f'Internal server error: {str(e)}'}), 500
+        return jsonify({
+            'success': False,
+            'error': f'Internal server error: {str(e)}'
+        }), 500
 
-@app.route('/ask/<path:question>', methods=['GET'])
-def ask_question_get(question):
-    """GET endpoint for browser testing - URL format: /ask/your question here"""
+@app.route('/ask', methods=['POST'])
+def ask_question_legacy():
+    """Legacy endpoint for backward compatibility"""
     try:
-        query = question.strip()
+        data = request.get_json()
+        query = data.get('query', '').strip()
         
         if not query:
             return jsonify({'error': 'No query provided'}), 400
         
-        print(f"📝 Query (GET): {query}")
-        
-        if rag_system is None:
-            initialize_rag()
-        
-        if rag_system != "fallback":
-            try:
-                result = rag_system.query(query)
-                
-                # Format for browser display
-                response_html = f"""
-                <!DOCTYPE html>
-                <html>
-                <head>
-                    <title>SAI RAG System Response</title>
-                    <style>
-                        body {{ font-family: Arial, sans-serif; margin: 40px; line-height: 1.6; }}
-                        .question {{ background: #e3f2fd; padding: 15px; border-radius: 5px; margin-bottom: 20px; }}
-                        .answer {{ background: #f3e5f5; padding: 15px; border-radius: 5px; margin-bottom: 20px; }}
-                        .sources {{ background: #fff3e0; padding: 15px; border-radius: 5px; }}
-                        .metadata {{ color: #666; font-size: 0.9em; margin-top: 15px; }}
-                        h1, h2 {{ color: #1976d2; }}
-                    </style>
-                </head>
-                <body>
-                    <h1>🏆 SAI Sports Assistant</h1>
-                    
-                    <div class="question">
-                        <h2>❓ Question:</h2>
-                        <p><strong>{result['question']}</strong></p>
-                    </div>
-                    
-                    <div class="answer">
-                        <h2>💬 Answer:</h2>
-                        <p>{result['answer']}</p>
-                    </div>
-                    
-                    <div class="sources">
-                        <h2>📚 Sources ({result['num_sources']} documents):</h2>
-                        <ul>
-                """
-                
-                for i, source in enumerate(result['sources'], 1):
-                    response_html += f"<li><strong>{source['title']}</strong><br><small>From: {source['source']}</small></li>"
-                
-                response_html += """
-                        </ul>
-                    </div>
-                    
-                    <div class="metadata">
-                        <p><strong>System:</strong> Enhanced RAG Pipeline | <strong>Model:</strong> Gemini 1.5 Flash | <strong>Vector Store:</strong> ChromaDB</p>
-                    </div>
-                    
-                    <hr>
-                    <p><a href="/ask/What is the Sports Authority of India">🔗 Try another question</a></p>
-                </body>
-                </html>
-                """
-                
-                return response_html
-                
-            except Exception as e:
-                return f"<html><body><h1>❌ Error</h1><p>{str(e)}</p></body></html>", 500
-        else:
-            return "<html><body><h1>❌ RAG System Not Available</h1><p>Please check system configuration</p></body></html>", 503
+        # Redirect to new chat endpoint format
+        chat_data = {'message': query}
+        return chat()
         
     except Exception as e:
-        print(f"❌ Error processing GET request: {e}")
-        return f"<html><body><h1>❌ Error</h1><p>{str(e)}</p></body></html>", 500
+        return jsonify({'error': f'Error: {str(e)}'}), 500
 
 @app.route('/health', methods=['GET'])
 def health_check():
@@ -338,36 +252,49 @@ def reload_system():
         }), 500
 
 if __name__ == '__main__':
-    print("🚀 Starting Enhanced Sports RAG Chatbot API")
-    print("=" * 60)
+    print("🚀 Starting SAI Sports Assistant API")
+    print("=" * 50)
     print("🔧 Features:")
-    print("  • Enhanced data pipeline with PDF + Web scraping")
-    print("  • LangChain RAG with advanced retrieval")
+    print("  • Enhanced RAG system with LangChain")
     print("  • Google Gemini AI integration") 
-    print("  • ChromaDB vector storage with persistence")
-    print("  • Intelligent caching and deduplication")
-    print("  • Production-ready Docker deployment")
+    print("  • ChromaDB vector storage")
+    print("  • CORS enabled for frontend integration")
+    print("  • Production-ready API endpoints")
     print()
     
+    # Check API key
     api_key = os.getenv("GEMINI_API_KEY")
     if api_key and api_key != "your_gemini_api_key_here":
         print("✅ Gemini API key configured")
     else:
         print("⚠️  Gemini API key not configured - set GEMINI_API_KEY environment variable")
     
-    # Get port from environment (Render sets this automatically)
+    # Get configuration from environment
     port = int(os.getenv("PORT", 5000))
     host = os.getenv("HOST", "0.0.0.0")
-    debug_mode = os.getenv("DEBUG", "False").lower() == "true"
     
-    print(f"🌐 Server starting on {host}:{port}")
-    print("\n🔗 Endpoints:")
-    print("  GET  / - Homepage with examples")
-    print("  GET  /ask/<question> - Ask questions via URL")
-    print("  POST /ask - Ask sports questions with enhanced RAG")
-    print("  GET  /health - System health and status")
-    print("  GET  /stats - Detailed system statistics")
+    # Force production mode to prevent file watching issues
+    debug_mode = False
+    
+    print(f"🌐 API Server starting on {host}:{port}")
+    print("\n🔗 API Endpoints:")
+    print("  GET  / - API documentation and status")
+    print("  POST /chat - Main chat endpoint for frontend")
+    print("  POST /ask - Legacy endpoint (redirects to /chat)")
+    print("  GET  /health - System health check")
+    print("  GET  /stats - System statistics")
+    print("  GET  /pipeline/status - Pipeline status")
     print("  POST /pipeline/refresh - Refresh data pipeline")
-    print("  GET  /pipeline/status - Pipeline status and metrics")
+    print()
+    print("🔧 Debug mode: DISABLED (prevents file watching issues)")
+    print("🌍 CORS: ENABLED for all origins")
+    print()
     
-    app.run(debug=debug_mode, host=host, port=port)
+    # Run the application
+    app.run(
+        debug=False,         # Always disable debug in production
+        host=host,
+        port=port,
+        use_reloader=False,  # Disable auto-reloader to prevent venv watching
+        threaded=True        # Enable threading for better performance
+    )
