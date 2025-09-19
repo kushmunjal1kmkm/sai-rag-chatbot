@@ -2,9 +2,10 @@ version: 2
 
 build:
   commands:
-    - echo "Building SAI RAG Chatbot..."
+    - echo "Building SAI RAG Chatbot with organized structure..."
     - pip install --upgrade pip
     - pip install -r requirements.txt
+    - echo "Build completed successfully"
 
 run:
   command: python main_app.py
@@ -16,3 +17,5 @@ env:
     value: /opt/render/project/src
   - key: FLASK_ENV
     value: production
+  - key: PORT
+    value: 5000
