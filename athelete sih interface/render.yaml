@@ -1,0 +1,18 @@
+version: 2
+
+build:
+  commands:
+    - echo "Building SAI RAG Chatbot..."
+    - pip install --upgrade pip
+    - pip install -r requirements.txt
+
+run:
+  command: python main_app.py
+
+env:
+  - key: PYTHON_VERSION
+    value: 3.11.0
+  - key: PYTHONPATH
+    value: /opt/render/project/src
+  - key: FLASK_ENV
+    value: production

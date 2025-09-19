@@ -1,0 +1,21 @@
+pdf_data_path: "./data"
+url_file_path: "./data/urls.txt"
+vector_store_path: "./vector_store"
+cache_path: "./cache"
+
+chunk_size: 1000
+chunk_overlap: 200
+embedding_model: "all-MiniLM-L6-v2"
+llm_model: "gemini-1.5-flash"
+llm_temperature: 0.3
+
+max_urls_per_domain: 200
+request_delay: 1.0
+max_retries: 3
+max_depth: 3
+content_relevance_threshold: 5.0
+
+enable_pdf_processing: true
+enable_web_scraping: true
+enable_caching: true
+enable_content_filtering: true
